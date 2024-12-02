@@ -1,55 +1,129 @@
-const express = require('express');
+const express = require("express");
 const app = express();
 const PORT = 3000;
+const { Pool } = require("pg");
+
+const pool = new Pool({
+  user: "your_username",
+  host: "localhost",
+  database: "your_database",
+  password: "your_password",
+  port: 5432,
+});
+
+// Function to get a table if it dont exist
+const createTasksTable = async () => {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+          CREATE TABLE IF NOT EXISTS tasks (
+            id SERIAL PRIMARY KEY,
+            description TEXT NOT NULL,
+            status TEXT NOT NULL
+          );
+        `);
+  } catch (err) {
+    console.error("Error creating tasks table:", err);
+  } finally {
+    await client.release();
+  }
+};
 
 app.use(express.json());
 
 let tasks = [
-    { id: 1, description: 'Buy groceries', status: 'incomplete' },
-    { id: 2, description: 'Read a book', status: 'complete' },
+  { id: 1, description: "Buy groceries", status: "incomplete" },
+  { id: 2, description: "Read a book", status: "complete" },
 ];
 
 // GET /tasks - Get all tasks
-app.get('/tasks', (req, res) => {
-    res.json(tasks);
+app.get("/tasks", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query("SELECT * FROM tasks");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching tasks:", err);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    await client.release();
+  }
 });
 
 // POST /tasks - Add a new task
-app.post('/tasks', (request, response) => {
-    const { id, description, status } = request.body;
-    if (!id || !description || !status) {
-        return response.status(400).json({ error: 'All fields (id, description, status) are required' });
-    }
+app.post("/tasks", async (req, res) => {
+  const { description, status } = req.body;
+  if (!description || !status) {
+    return res
+      .status(400)
+      .json({ error: "All fields (description, status) are required" });
+  }
 
-    tasks.push({ id, description, status });
-    response.status(201).json({ message: 'Task added successfully' });
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      "INSERT INTO tasks (description, status) VALUES ($1, $2) RETURNING *",
+      [description, status]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Error adding task:", err);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    await client.release();
+  }
 });
 
 // PUT /tasks/:id - Update a task's status
-app.put('/tasks/:id', (request, response) => {
-    const taskId = parseInt(request.params.id, 10);
-    const { status } = request.body;
-    const task = tasks.find(t => t.id === taskId);
+app.put("/tasks/:id", async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const { status } = req.body;
 
-    if (!task) {
-        return response.status(404).json({ error: 'Task not found' });
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      "UPDATE tasks SET status = $1 WHERE id = $2 RETURNING *",
+      [status, taskId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Task not found" });
     }
-    task.status = status;
-    response.json({ message: 'Task updated successfully' });
+
+    res.json({ message: "Task updated successfully", task: result.rows[0] });
+  } catch (err) {
+    console.error("Error updating task:", err);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    await client.release();
+  }
 });
 
 // DELETE /tasks/:id - Delete a task
-app.delete('/tasks/:id', (request, response) => {
-    const taskId = parseInt(request.params.id, 10);
-    const initialLength = tasks.length;
-    tasks = tasks.filter(t => t.id !== taskId);
+app.delete("/tasks/:id", async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
 
-    if (tasks.length === initialLength) {
-        return response.status(404).json({ error: 'Task not found' });
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      "DELETE FROM tasks WHERE id = $1 RETURNING *",
+      [taskId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Task not found" });
     }
-    response.json({ message: 'Task deleted successfully' });
+
+    res.json({ message: "Task deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting task:", err);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    await client.release();
+  }
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+aapp.listen(PORT, async () => {
+  await createTasksTable();
+  console.log(`Server is running on http://localhost:${PORT}`);
 });
