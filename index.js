@@ -4,10 +4,10 @@ const PORT = 3000;
 const { Pool } = require("pg");
 
 const pool = new Pool({
-  user: "your_username",
+  user: "username",
   host: "localhost",
-  database: "your_database",
-  password: "your_password",
+  database: "QAP3",
+  password: "juicewrld",
   port: 5432,
 });
 
@@ -123,7 +123,7 @@ app.delete("/tasks/:id", async (req, res) => {
   }
 });
 
-aapp.listen(PORT, async () => {
+app.listen(PORT, async () => {
   await createTasksTable();
   console.log(`Server is running on http://localhost:${PORT}`);
 });
